@@ -49,8 +49,8 @@ class Trab1():
         self.cmd_vel.publish(move_cmd)
 
     def calcVel(self, spin):
-        if abs(spin) < 0.4:
-            return 0.4
+        if abs(spin) < 1.0:
+            return (1 - abs(spin))*0.7
         return 0
 
     def calcSpin(self, origOrient, origX, origY, destX, destY):
