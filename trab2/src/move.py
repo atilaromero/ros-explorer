@@ -92,11 +92,20 @@ def localbest(worldmap, laserscan, x, y, rot, maxattempts=10, curresult=None, an
                 return localbest(worldmap, laserscan, *sample, maxattempts=maxattempts, curresult=sampleresult)
     return (x,y,rot), curresult
 
-def showImage(obj):
-    norm = Normalize(vmin=-1, vmax=1)
+def calcPathPlanThread(obj):
+    while(not rospy.is_shutdown()):
+        pathplan = obj.worldmap * 1000
+        pathplan[pathplan<0] = 0
+        pathplan = mkPathPlanA(pathplan, (obj.pos.x, obj.pos.y), goal=(0,0), maxruns=100)
+        pathplan = pathplan - np.nanmin(pathplan)
+        pathplan = pathplan/np.nanmax(pathplan)*2-1
+        obj.pathplan = pathplan        
+
+def showImagesThread(obj):
+    norm = Normalize(vmin=-2, vmax=1)
     cv2.namedWindow('worldmap')
+    cv2.namedWindow('pathplan')
     cv2.namedWindow('localmap')
-    worldmap = obj.worldmap
     while(not rospy.is_shutdown()):
         if not hasattr(obj, "scan"):
             time.sleep(0.1)
@@ -105,27 +114,74 @@ def showImage(obj):
         x, y, rot = obj.pos.x, obj.pos.y, obj.pos.rot
         x0,y0,rot0 = x,y,rot
         localmap = ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
-        # (x, y, rot), grade = localrandom(worldmap, localmap, x, y, rot)
-        (x, y, rot), grade = localbest(worldmap, localmap, x, y, rot, angle_increment=msg.angle_increment)
+        # (x, y, rot), grade = localrandom(obj.worldmap, localmap, x, y, rot)
+        (x, y, rot), grade = localbest(obj.worldmap, localmap, x, y, rot, angle_increment=msg.angle_increment)
         if grade > 0:
-            obj.pos.x += (x-x0)/2        
+            obj.pos.x += (x-x0)/2  # /2 to smooth correction      
             obj.pos.y += (y-y0)/2       
             obj.pos.rot += (rot-rot0)/2
-            if abs(rot0-rot)>0:
-                print rot0-rot  
-        worldmap = joinMaps(worldmap, localmap, x, y, rot)
-        cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
-        cv2.waitKey(1)
+        obj.worldmap = joinMaps(obj.worldmap, localmap, x, y, rot)
+        cv2.imshow("pathplan", cm.rainbow(norm(obj.pathplan)))
+        # cv2.waitKey(1)
+        cv2.imshow("worldmap", cm.rainbow(norm(obj.worldmap)))
+        # cv2.waitKey(1)
         cv2.imshow("localmap", cm.rainbow(norm(localmap)))
         cv2.waitKey(1)
     cv2.destroyWindow('worldmap')
+    cv2.destroyWindow('pathplan')
     cv2.destroyWindow('localmap')
-        
+
+def mkPathPlan(worldmap, goal=(0,0), maxruns=1000):
+    v = worldmap.copy()
+    v[goal[0], goal[1]] = -2.0
+    h,w = v.shape
+    oldv = v.copy()
+    newv = v.copy()
+    for t in range(maxruns):
+        updated=False
+        for x in range(1,h-1):
+            for y in range(1,w-1):
+                if v[x,y] != -2 and v[x,y] < 0.8:
+                    if oldv[x,y] <= min(oldv[x-1,y],oldv[x+1,y],oldv[x,y-1],oldv[x,y+1]):
+                        updated = True
+                    newv[x,y] = (oldv[x-1,y]+oldv[x+1,y]+oldv[x,y-1]+oldv[x,y+1])/4
+        oldv=newv.copy()
+        if not updated:
+            break
+    print(t)
+    return oldv
+
+def mkPathPlanA(worldmap, start, goal=(0,0), maxruns=100):
+    wx,wy = worldmap.shape
+    gx,gy = goal
+    gridx, gridy = np.mgrid[-gx:wx-gx,-gy:wy-gy]
+    grid = np.abs(gridx) + np.abs(gridy) + worldmap
+    last = start
+    while(maxruns>0 and grid[last[0], last[1]]>0):
+        maxruns -= 1
+        candidates = [
+                [last[0]-1,last[1]],
+                [last[0]  ,last[1]-1],
+                [last[0]+1,last[1]],
+                [last[0]  ,last[1]+1],
+                ]
+        candidates = [(x,y) for (x,y) in candidates if x>=0 and y>=0]
+        prox = min(candidates, key=lambda a:grid[a[0], a[1]])
+        if grid[prox[0], prox[1]]>grid[last[0],last[1]]:
+            grid[last[0],last[1]]=grid[prox[0], prox[1]]
+            last = prox
+            continue
+        if grid[prox[0], prox[1]]==grid[last[0],last[1]]:
+            grid[prox[0], prox[1]]+=1
+            continue
+        last=prox
+    return grid
 
 class Trab2():
     def __init__(self):
         self.linearResolution = 0.2
         self.worldmap = np.ndarray((400,400), float)
+        self.pathplan = self.worldmap.copy()
         self.pos = lambda:None
         self.pos.x = self.worldmap.shape[0]/2
         self.pos.y = self.worldmap.shape[1]/2
@@ -136,7 +192,10 @@ class Trab2():
         self.cmd_vel = rospy.Publisher('/cmd_vel_mux/input/navi', Twist, queue_size=10)
 
         self.threads = []
-        th = threading.Thread(target=lambda:showImage(self))
+        th = threading.Thread(target=lambda:showImagesThread(self))
+        th.start()
+        self.threads.append(th)
+        th = threading.Thread(target=lambda:calcPathPlanThread(self))
         th.start()
         self.threads.append(th)
 
