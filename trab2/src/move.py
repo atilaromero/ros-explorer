@@ -10,6 +10,7 @@ import threading
 import time
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
+import collections
 
 def normRad(rad):
     return (rad + np.pi) % (2*np.pi) - np.pi
@@ -92,20 +93,8 @@ def localbest(worldmap, laserscan, x, y, rot, maxattempts=10, curresult=None, an
                 return localbest(worldmap, laserscan, *sample, maxattempts=maxattempts, curresult=sampleresult)
     return (x,y,rot), curresult
 
-def calcPathPlanThread(obj):
-    while(not rospy.is_shutdown()):
-        pathplan = obj.worldmap * 1000
-        pathplan[pathplan<0] = 0
-        pathplan = mkPathPlanA(pathplan, (obj.pos.x, obj.pos.y), goal=(0,0), maxruns=100)
-        pathplan = pathplan - np.nanmin(pathplan)
-        pathplan = pathplan/np.nanmax(pathplan)*2-1
-        obj.pathplan = pathplan        
-
-def showImagesThread(obj):
+def updateWorldMapThread(obj):
     norm = Normalize(vmin=-2, vmax=1)
-    cv2.namedWindow('worldmap')
-    cv2.namedWindow('pathplan')
-    cv2.namedWindow('localmap')
     while(not rospy.is_shutdown()):
         if not hasattr(obj, "scan"):
             time.sleep(0.1)
@@ -121,15 +110,31 @@ def showImagesThread(obj):
             obj.pos.y += (y-y0)/2       
             obj.pos.rot += (rot-rot0)/2
         obj.worldmap = joinMaps(obj.worldmap, localmap, x, y, rot)
-        cv2.imshow("pathplan", cm.rainbow(norm(obj.pathplan)))
+        obj.localmap = localmap
+
+def showImagesThread(obj):
+    norm = Normalize(vmin=-2, vmax=1)
+    cv2.namedWindow('worldmap')
+    cv2.namedWindow('pathplan')
+    cv2.namedWindow('localmap')
+    while(not rospy.is_shutdown()):
+        cv2.imshow("pathplan", cm.rainbow(norm(obj.pathplan+obj.worldmap*0.5)))
         # cv2.waitKey(1)
         cv2.imshow("worldmap", cm.rainbow(norm(obj.worldmap)))
         # cv2.waitKey(1)
-        cv2.imshow("localmap", cm.rainbow(norm(localmap)))
+        cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
         cv2.waitKey(1)
     cv2.destroyWindow('worldmap')
     cv2.destroyWindow('pathplan')
     cv2.destroyWindow('localmap')
+
+def calcPathPlanThread(obj):
+    while(not rospy.is_shutdown()):
+        route = mkPathPlanA(obj.worldmap, (obj.pos.x, obj.pos.y), goal=(20,20))
+        pathplan = np.zeros(obj.worldmap.shape)
+        for x,y in route:
+            pathplan[x-3:x+3,y-3:y+3] = -1
+        obj.pathplan = pathplan        
 
 def mkPathPlan(worldmap, goal=(0,0), maxruns=1000):
     v = worldmap.copy()
@@ -151,37 +156,94 @@ def mkPathPlan(worldmap, goal=(0,0), maxruns=1000):
     print(t)
     return oldv
 
-def mkPathPlanA(worldmap, start, goal=(0,0), maxruns=100):
+def mkPathPlan2(worldmap, start, goal=(0,0), maxruns=1000):
     wx,wy = worldmap.shape
     gx,gy = goal
     gridx, gridy = np.mgrid[-gx:wx-gx,-gy:wy-gy]
     grid = np.abs(gridx) + np.abs(gridy) + worldmap
     last = start
+    choice = set()
     while(maxruns>0 and grid[last[0], last[1]]>0):
         maxruns -= 1
+        temp = grid.copy()
+        temp[last[0], last[1]] = -1
+        choice.add(tuple(last))
         candidates = [
                 [last[0]-1,last[1]],
                 [last[0]  ,last[1]-1],
                 [last[0]+1,last[1]],
                 [last[0]  ,last[1]+1],
                 ]
-        candidates = [(x,y) for (x,y) in candidates if x>=0 and y>=0]
+        candidates = [(x,y) for (x,y) in candidates if x>=0 and y>=0 and not np.isnan(grid[x,y])]
         prox = min(candidates, key=lambda a:grid[a[0], a[1]])
-        if grid[prox[0], prox[1]]>grid[last[0],last[1]]:
-            grid[last[0],last[1]]=grid[prox[0], prox[1]]
+        if grid[prox[0], prox[1]]>grid[last[0],last[1]]: # at local minimum
+            grid[last[0],last[1]]=grid[prox[0], prox[1]] +1 # flat here
             last = prox
+            if tuple(prox) in choice:
+                choice.remove(last)
             continue
         if grid[prox[0], prox[1]]==grid[last[0],last[1]]:
             grid[prox[0], prox[1]]+=1
             continue
+        if tuple(prox) in choice:
+            choice.remove(last)
         last=prox
-    return grid
+    choice.add(last)
+    return grid, choice
+
+def neighbors(pos):
+    r = set()
+    for x in range(-1,2):
+        for y in range(-1,2):
+            r.add((pos[0]+x,pos[1]+y))
+    return [(x,y) for (x,y) in r if (x,y)!=pos and x>=0 and y>=0]
+
+def mkPathPlanA(worldmap, start, goal):
+    def h(start, goal):
+        dist = np.sqrt(np.sum((np.array(start)-np.array(goal))**2))
+        goalPenalti = worldmap[goal[0], goal[1]] * 10
+        if goalPenalti > 0:
+            dist += goalPenalti
+        return dist
+    return a_star(start, goal, h, neighbors)
+
+def a_star(start, goal, h, neighbors):
+    todo = set()
+    todo.add(start)
+    done = set()
+    came = {}
+    g = collections.defaultdict(lambda:np.inf)
+    g[start] = 0
+    f = collections.defaultdict(lambda:np.inf)
+    f[start] = h(start, goal)
+    while(len(todo)>0):
+        cur = min(todo, key=lambda x: f[x])
+        if cur == goal:
+            p = [cur]
+            while cur in came:
+                cur = came[cur]
+                p.append(cur)
+            return p[::-1]
+        todo.remove(cur)
+        done.add(cur)
+        for neighbor in neighbors(cur):
+            if neighbor in done:
+                continue
+            if not neighbor in todo:
+                todo.add(neighbor)
+            tempg = g[cur] + h(cur, neighbor)
+            if tempg >= g[neighbor]:
+                continue
+            g[neighbor] = tempg
+            came[neighbor] = cur
+            f[neighbor] = g[neighbor] + h(neighbor,goal)
 
 class Trab2():
     def __init__(self):
         self.linearResolution = 0.2
         self.worldmap = np.ndarray((400,400), float)
         self.pathplan = self.worldmap.copy()
+        self.localmap = np.ndarray((10,10),float)
         self.pos = lambda:None
         self.pos.x = self.worldmap.shape[0]/2
         self.pos.y = self.worldmap.shape[1]/2
@@ -191,13 +253,9 @@ class Trab2():
         self.scan_sub = rospy.Subscriber('/scan', LaserScan, self.getScan)
         self.cmd_vel = rospy.Publisher('/cmd_vel_mux/input/navi', Twist, queue_size=10)
 
-        self.threads = []
-        th = threading.Thread(target=lambda:showImagesThread(self))
-        th.start()
-        self.threads.append(th)
-        th = threading.Thread(target=lambda:calcPathPlanThread(self))
-        th.start()
-        self.threads.append(th)
+        threading.Thread(target=lambda:updateWorldMapThread(self)).start()
+        threading.Thread(target=lambda:calcPathPlanThread(self)).start()
+        threading.Thread(target=lambda:showImagesThread(self)).start()
 
         # TurtleBot will stop if we don't keep telling it to move.
         # How often should we tell it to move? 10 HZ
@@ -222,13 +280,23 @@ class Trab2():
         move_cmd.linear.x = vel
         self.cmd_vel.publish(move_cmd)
 
+    def calcSpin(self):
+        r=2
+        near = self.pathplan[self.pos.x-r:self.pos.x+r, self.pos.y-r:self.pos.y+r]
+        dx,dy = np.gradient(near)
+        dx,dy = np.mean(dx), np.mean(dy)
+        rot = np.arctan2(dx,-dy)
+        spin = rot-self.pos.rot
+        spinmax = 1.0
+        if abs(spin) > spinmax:
+            return spin/abs(spin)*spinmax
+        return spin
+
     def calcVel(self, spin):
+        return 0
         if abs(spin) < 1.0:
             return (1 - abs(spin))*0.7
-        return 0.1
-
-    def calcSpin(self):
-        return 1.0
+        return 0
 
     def shutdown(self):
         # a default Twist has linear.x of 0 and angular.z of 0.  So it'll stop TurtleBot
