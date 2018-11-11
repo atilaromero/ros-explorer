@@ -104,11 +104,11 @@ def updateWorldMapThread(obj):
         x0,y0,rot0 = x,y,rot
         localmap = ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
         # (x, y, rot), grade = localrandom(obj.worldmap, localmap, x, y, rot)
-        (x, y, rot), grade = localbest(obj.worldmap, localmap, x, y, rot, angle_increment=msg.angle_increment)
-        if grade > 0:
-            obj.pos.x += (x-x0)/2  # /2 to smooth correction      
-            obj.pos.y += (y-y0)/2       
-            obj.pos.rot += (rot-rot0)/2
+        # (x, y, rot), grade = localbest(obj.worldmap, localmap, x, y, rot, angle_increment=msg.angle_increment)
+        # if grade > 0:
+        #     obj.pos.x += (x-x0)/2  # /2 to smooth correction      
+        #     obj.pos.y += (y-y0)/2       
+        #     obj.pos.rot += (rot-rot0)/2
         obj.worldmap = joinMaps(obj.worldmap, localmap, x, y, rot)
         obj.localmap = localmap
 
@@ -119,9 +119,7 @@ def showImagesThread(obj):
     cv2.namedWindow('localmap')
     while(not rospy.is_shutdown()):
         cv2.imshow("pathplan", cm.rainbow(norm(obj.pathplan+obj.worldmap*0.5)))
-        # cv2.waitKey(1)
         cv2.imshow("worldmap", cm.rainbow(norm(obj.worldmap)))
-        # cv2.waitKey(1)
         cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
         cv2.waitKey(1)
     cv2.destroyWindow('worldmap')
@@ -130,84 +128,42 @@ def showImagesThread(obj):
 
 def calcPathPlanThread(obj):
     while(not rospy.is_shutdown()):
-        route = mkPathPlanA(obj.worldmap, (obj.pos.x, obj.pos.y), goal=(20,20))
+        print "making path"
+        route = mkPathPlanA(obj.worldmap, (obj.pos.x, obj.pos.y), (200,380))
         pathplan = np.zeros(obj.worldmap.shape)
+        obj.route = route
         for x,y in route:
             pathplan[x-3:x+3,y-3:y+3] = -1
-        obj.pathplan = pathplan        
+        obj.pathplan = pathplan
 
-def mkPathPlan(worldmap, goal=(0,0), maxruns=1000):
-    v = worldmap.copy()
-    v[goal[0], goal[1]] = -2.0
-    h,w = v.shape
-    oldv = v.copy()
-    newv = v.copy()
-    for t in range(maxruns):
-        updated=False
-        for x in range(1,h-1):
-            for y in range(1,w-1):
-                if v[x,y] != -2 and v[x,y] < 0.8:
-                    if oldv[x,y] <= min(oldv[x-1,y],oldv[x+1,y],oldv[x,y-1],oldv[x,y+1]):
-                        updated = True
-                    newv[x,y] = (oldv[x-1,y]+oldv[x+1,y]+oldv[x,y-1]+oldv[x,y+1])/4
-        oldv=newv.copy()
-        if not updated:
-            break
-    print(t)
-    return oldv
-
-def mkPathPlan2(worldmap, start, goal=(0,0), maxruns=1000):
-    wx,wy = worldmap.shape
-    gx,gy = goal
-    gridx, gridy = np.mgrid[-gx:wx-gx,-gy:wy-gy]
-    grid = np.abs(gridx) + np.abs(gridy) + worldmap
-    last = start
-    choice = set()
-    while(maxruns>0 and grid[last[0], last[1]]>0):
-        maxruns -= 1
-        temp = grid.copy()
-        temp[last[0], last[1]] = -1
-        choice.add(tuple(last))
-        candidates = [
-                [last[0]-1,last[1]],
-                [last[0]  ,last[1]-1],
-                [last[0]+1,last[1]],
-                [last[0]  ,last[1]+1],
-                ]
-        candidates = [(x,y) for (x,y) in candidates if x>=0 and y>=0 and not np.isnan(grid[x,y])]
-        prox = min(candidates, key=lambda a:grid[a[0], a[1]])
-        if grid[prox[0], prox[1]]>grid[last[0],last[1]]: # at local minimum
-            grid[last[0],last[1]]=grid[prox[0], prox[1]] +1 # flat here
-            last = prox
-            if tuple(prox) in choice:
-                choice.remove(last)
-            continue
-        if grid[prox[0], prox[1]]==grid[last[0],last[1]]:
-            grid[prox[0], prox[1]]+=1
-            continue
-        if tuple(prox) in choice:
-            choice.remove(last)
-        last=prox
-    choice.add(last)
-    return grid, choice
+def mkPathPlanA(worldmap, start, goal):
+    time.sleep(10) # wait initial spin
+    def h(start, goal):
+        x,y = goal
+        walls = worldmap.copy()
+        walls[walls<0]=0
+        r = 5
+        if np.sum(worldmap[x-r:x+r, y-r:y+r]) >0:
+            return np.inf
+        dist = np.sqrt(np.sum((np.array(start)-np.array(goal))**2))
+        return dist
+    return a_star(start, goal, h, neighbors)
 
 def neighbors(pos):
     r = set()
     for x in range(-1,2):
         for y in range(-1,2):
-            r.add((pos[0]+x,pos[1]+y))
+            r.add((pos[0]+x*1,pos[1]+y*1))
     return [(x,y) for (x,y) in r if (x,y)!=pos and x>=0 and y>=0]
 
-def mkPathPlanA(worldmap, start, goal):
-    def h(start, goal):
-        dist = np.sqrt(np.sum((np.array(start)-np.array(goal))**2))
-        goalPenalti = worldmap[goal[0], goal[1]] * 10
-        if goalPenalti > 0:
-            dist += goalPenalti
-        return dist
-    return a_star(start, goal, h, neighbors)
+def traceback(cur, came):
+    p = [cur]
+    while cur in came:
+        cur = came[cur]
+        p.append(cur)
+    return p
 
-def a_star(start, goal, h, neighbors):
+def a_star(start, goal, h, neighbors, maxruns=2000):
     todo = set()
     todo.add(start)
     done = set()
@@ -216,14 +172,11 @@ def a_star(start, goal, h, neighbors):
     g[start] = 0
     f = collections.defaultdict(lambda:np.inf)
     f[start] = h(start, goal)
-    while(len(todo)>0):
+    while(len(todo)>0 and maxruns>0):
+        maxruns-=1
         cur = min(todo, key=lambda x: f[x])
         if cur == goal:
-            p = [cur]
-            while cur in came:
-                cur = came[cur]
-                p.append(cur)
-            return p[::-1]
+            return traceback(cur, came)
         todo.remove(cur)
         done.add(cur)
         for neighbor in neighbors(cur):
@@ -237,12 +190,14 @@ def a_star(start, goal, h, neighbors):
             g[neighbor] = tempg
             came[neighbor] = cur
             f[neighbor] = g[neighbor] + h(neighbor,goal)
+    return traceback(cur,came)
 
 class Trab2():
     def __init__(self):
         self.linearResolution = 0.2
         self.worldmap = np.ndarray((400,400), float)
         self.pathplan = self.worldmap.copy()
+        self.route = []
         self.localmap = np.ndarray((10,10),float)
         self.pos = lambda:None
         self.pos.x = self.worldmap.shape[0]/2
@@ -273,29 +228,43 @@ class Trab2():
         spin = self.calcSpin()
         vel = self.calcVel(spin)
         self.pos.rot += spin/self.rate
-        self.pos.x += (np.cos(self.pos.rot)*vel)/self.rate
-        self.pos.y += (np.sin(self.pos.rot)*vel)/self.rate
+        self.pos.x -= np.sin(self.pos.rot)*vel*2
+        self.pos.y += np.cos(self.pos.rot)*vel*2
         move_cmd = Twist()
         move_cmd.angular.z = spin
         move_cmd.linear.x = vel
         self.cmd_vel.publish(move_cmd)
 
     def calcSpin(self):
-        r=2
-        near = self.pathplan[self.pos.x-r:self.pos.x+r, self.pos.y-r:self.pos.y+r]
-        dx,dy = np.gradient(near)
-        dx,dy = np.mean(dx), np.mean(dy)
-        rot = np.arctan2(dx,-dy)
+        return 0.3
+        if len(self.route)==0:
+            return 0.5
+        while(len(self.route)>0):
+            rx,ry = self.route[-1]
+            dx, dy = rx-self.pos.x, ry-self.pos.y
+            if np.abs(dx)+np.abs(dy)<10: #discard too close points
+                self.route.pop()
+                continue
+            break
+        rot = np.arctan2(-dx,dy) # cv2 weird axis
+        rot = (rot+np.pi)%(2*np.pi)-np.pi
+        rot = 0
         spin = rot-self.pos.rot
-        spinmax = 1.0
-        if abs(spin) > spinmax:
-            return spin/abs(spin)*spinmax
-        return spin
+        spin = (spin+np.pi)%(2*np.pi)-np.pi
+        # spinmax = 1.0
+        # if abs(spin) > spinmax:
+        #     return spin/abs(spin)*spinmax
+        return spin * 0.5
 
     def calcVel(self, spin):
-        return 0
-        if abs(spin) < 1.0:
-            return (1 - abs(spin))*0.7
+        return 0.1
+        if not hasattr(self, "scan"):
+            return 0
+        ranges = self.scan.ranges
+        if np.nanmin(ranges) < 0.5: #colision detected
+            return 0
+        if abs(spin) < 0.2:
+            return (1 - abs(spin))*0.3
         return 0
 
     def shutdown(self):
