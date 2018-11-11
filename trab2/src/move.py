@@ -103,38 +103,39 @@ def updateWorldMapThread(obj):
         x, y, rot = obj.pos.x, obj.pos.y, obj.pos.rot
         x0,y0,rot0 = x,y,rot
         localmap = ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
+        grade = 0
         # (x, y, rot), grade = localrandom(obj.worldmap, localmap, x, y, rot)
         # (x, y, rot), grade = localbest(obj.worldmap, localmap, x, y, rot, angle_increment=msg.angle_increment)
-        # if grade > 0:
-        #     obj.pos.x += (x-x0)/2  # /2 to smooth correction      
-        #     obj.pos.y += (y-y0)/2       
-        #     obj.pos.rot += (rot-rot0)/2
+        if grade > 0:
+            obj.pos.x += (x-x0)/2  # /2 to smooth correction      
+            obj.pos.y += (y-y0)/2       
+            obj.pos.rot += (rot-rot0)/2
         obj.worldmap = joinMaps(obj.worldmap, localmap, x, y, rot)
         obj.localmap = localmap
 
 def showImagesThread(obj):
     norm = Normalize(vmin=-2, vmax=1)
     cv2.namedWindow('worldmap')
-    cv2.namedWindow('pathplan')
     cv2.namedWindow('localmap')
     while(not rospy.is_shutdown()):
-        cv2.imshow("pathplan", cm.rainbow(norm(obj.pathplan+obj.worldmap*0.5)))
-        cv2.imshow("worldmap", cm.rainbow(norm(obj.worldmap)))
+        worldmap = obj.worldmap.copy()
+        for x,y in obj.route:
+            worldmap[x-3:x+3,y-3:y+3] = -1
+        cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
         cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
         cv2.waitKey(1)
     cv2.destroyWindow('worldmap')
-    cv2.destroyWindow('pathplan')
     cv2.destroyWindow('localmap')
 
 def calcPathPlanThread(obj):
     while(not rospy.is_shutdown()):
         print "making path"
+        if len(obj.route)>0: # do not recalculate if there is a plan in action
+            obj.route = obj.route[1:] # fade plan
+            time.sleep(1)
+            continue
         route = mkPathPlanA(obj.worldmap, (obj.pos.x, obj.pos.y), (200,380))
-        pathplan = np.zeros(obj.worldmap.shape)
         obj.route = route
-        for x,y in route:
-            pathplan[x-3:x+3,y-3:y+3] = -1
-        obj.pathplan = pathplan
 
 def mkPathPlanA(worldmap, start, goal):
     time.sleep(10) # wait initial spin
@@ -147,13 +148,16 @@ def mkPathPlanA(worldmap, start, goal):
             return np.inf
         dist = np.sqrt(np.sum((np.array(start)-np.array(goal))**2))
         return dist
-    return a_star(start, goal, h, neighbors)
+    def stopfun(cur):
+        x,y = cur
+        return np.sum(worldmap[x-3:x+3,y-3:y+3]**2)==0
+    return a_star(start, goal, h, neighbors, stopfun=stopfun)
 
 def neighbors(pos):
     r = set()
     for x in range(-1,2):
         for y in range(-1,2):
-            r.add((pos[0]+x*1,pos[1]+y*1))
+            r.add((pos[0]+x*8,pos[1]+y*8))
     return [(x,y) for (x,y) in r if (x,y)!=pos and x>=0 and y>=0]
 
 def traceback(cur, came):
@@ -163,7 +167,7 @@ def traceback(cur, came):
         p.append(cur)
     return p
 
-def a_star(start, goal, h, neighbors, maxruns=2000):
+def a_star(start, goal, h, neighbors, stopfun=lambda x: False, maxruns=2000):
     todo = set()
     todo.add(start)
     done = set()
@@ -175,7 +179,7 @@ def a_star(start, goal, h, neighbors, maxruns=2000):
     while(len(todo)>0 and maxruns>0):
         maxruns-=1
         cur = min(todo, key=lambda x: f[x])
-        if cur == goal:
+        if cur == goal or stopfun(cur):
             return traceback(cur, came)
         todo.remove(cur)
         done.add(cur)
@@ -196,7 +200,6 @@ class Trab2():
     def __init__(self):
         self.linearResolution = 0.2
         self.worldmap = np.ndarray((400,400), float)
-        self.pathplan = self.worldmap.copy()
         self.route = []
         self.localmap = np.ndarray((10,10),float)
         self.pos = lambda:None
@@ -236,28 +239,25 @@ class Trab2():
         self.cmd_vel.publish(move_cmd)
 
     def calcSpin(self):
-        return 0.3
         if len(self.route)==0:
             return 0.5
-        while(len(self.route)>0):
-            rx,ry = self.route[-1]
-            dx, dy = rx-self.pos.x, ry-self.pos.y
-            if np.abs(dx)+np.abs(dy)<10: #discard too close points
-                self.route.pop()
-                continue
-            break
+        # while(len(self.route)>0):
+        #     rx,ry = self.route[-1]
+        #     dx, dy = rx-self.pos.x, ry-self.pos.y
+        #     if np.abs(dx)+np.abs(dy)<10: #discard too close points
+        #         self.route.pop()
+        #         continue
+        #     break
         rot = np.arctan2(-dx,dy) # cv2 weird axis
         rot = (rot+np.pi)%(2*np.pi)-np.pi
-        rot = 0
         spin = rot-self.pos.rot
         spin = (spin+np.pi)%(2*np.pi)-np.pi
         # spinmax = 1.0
         # if abs(spin) > spinmax:
         #     return spin/abs(spin)*spinmax
-        return spin * 0.5
+        return spin * 0.3
 
     def calcVel(self, spin):
-        return 0.1
         if not hasattr(self, "scan"):
             return 0
         ranges = self.scan.ranges
