@@ -120,7 +120,7 @@ def showImagesThread(obj):
     while(not rospy.is_shutdown()):
         worldmap = obj.worldmap.copy()
         for x,y in obj.route:
-            worldmap[x-3:x+3,y-3:y+3] = -1
+            worldmap[x-4:x+4,y-4:y+4] = -2
         cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
         cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
         cv2.waitKey(1)
@@ -131,8 +131,8 @@ def calcPathPlanThread(obj):
     while(not rospy.is_shutdown()):
         print "making path"
         if len(obj.route)>0: # do not recalculate if there is a plan in action
-            obj.route = obj.route[1:] # fade plan
-            time.sleep(1)
+            time.sleep(5)
+            obj.route = obj.route[1:] # fade path
             continue
         route = mkPathPlanA(obj.worldmap, (obj.pos.x, obj.pos.y), (200,380))
         obj.route = route
@@ -144,7 +144,7 @@ def mkPathPlanA(worldmap, start, goal):
         walls = worldmap.copy()
         walls[walls<0]=0
         r = 5
-        if np.sum(worldmap[x-r:x+r, y-r:y+r]) >0:
+        if np.sum(walls[x-r:x+r, y-r:y+r]) >0:
             return np.inf
         dist = np.sqrt(np.sum((np.array(start)-np.array(goal))**2))
         return dist
@@ -167,7 +167,7 @@ def traceback(cur, came):
         p.append(cur)
     return p
 
-def a_star(start, goal, h, neighbors, stopfun=lambda x: False, maxruns=2000):
+def a_star(start, goal, h, neighbors, stopfun=lambda x: False, maxruns=4000):
     todo = set()
     todo.add(start)
     done = set()
@@ -242,12 +242,12 @@ class Trab2():
         if len(self.route)==0:
             return 0.5
         # while(len(self.route)>0):
-        #     rx,ry = self.route[-1]
-        #     dx, dy = rx-self.pos.x, ry-self.pos.y
-        #     if np.abs(dx)+np.abs(dy)<10: #discard too close points
-        #         self.route.pop()
         #         continue
         #     break
+        rx,ry = self.route[-1]
+        dx, dy = rx-self.pos.x, ry-self.pos.y
+        if np.abs(dx)+np.abs(dy)<8: # reached point
+            self.route.pop()
         rot = np.arctan2(-dx,dy) # cv2 weird axis
         rot = (rot+np.pi)%(2*np.pi)-np.pi
         spin = rot-self.pos.rot
@@ -260,10 +260,10 @@ class Trab2():
     def calcVel(self, spin):
         if not hasattr(self, "scan"):
             return 0
-        ranges = self.scan.ranges
-        if np.nanmin(ranges) < 0.5: #colision detected
-            return 0
-        if abs(spin) < 0.2:
+        # ranges = self.scan.ranges
+        # if np.nanmin(ranges) < 0.5: #colision detected
+        #     return 0
+        if abs(spin) < 0.1:
             return (1 - abs(spin))*0.3
         return 0
 
