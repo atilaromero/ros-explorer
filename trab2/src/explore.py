@@ -54,7 +54,16 @@ def showImagesThread(obj):
 
 def calcBVPThread(obj):
     while(not rospy.is_shutdown()):
-        obj.bvpMap = harmonicpotentialfield.mkBVPMap(obj.worldmap)
+        bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap)
+        # walls = None
+        # for i in range(4):
+        #     route = harmonicpotentialfield.mkRoute(bvp, (obj.pos.x, obj.pos.y))
+        #     if len(route)>1:
+        #         x,y = route[-1]
+        #         if obj.worldmap[x,y] == 0: # unexplored
+        #             break
+        #     bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap,steps=400,walls=walls)
+        obj.bvpMap = bvp
 
 def calcPathPlanThread(obj):
     time.sleep(1) # wait initial spin
