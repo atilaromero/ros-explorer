@@ -1,13 +1,19 @@
 import numpy as np
 import cv2
 
-def mkBVPMap(worldmap, steps=400, walls=None):
+kernel = np.array([
+            [0,1,0],
+            [1,0,1],
+            [0,1,0]
+            ])/4.0
+
+def mkBVPMap(worldmap, steps=100, walls=None):
     if walls is None:
         walls = np.zeros(worldmap.shape)
     for x in range(steps):
         walls[worldmap>0]=1
         walls[worldmap==0]=-1
-        walls = cv2.filter2D(walls,-1,np.array([[0,1,0],[1,0,1],[0,1,0]])/4.0)
+        walls = cv2.filter2D(walls,-1,kernel)
     return walls
 
 def mkRoute(planMap, start, steps=20, stepSize=5):

@@ -44,18 +44,23 @@ def showImagesThread(obj):
         worldmap = obj.worldmap.copy()
         for x,y in obj.route:
             worldmap[x-4:x+4,y-4:y+4] = -2
-        cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
-        cv2.imshow("bvpmap", cm.rainbow(norm(obj.bvpMap)))
-        cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
+        # cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
+        # cv2.imshow("bvpmap", cm.rainbow(norm(obj.bvpMap)))
+        # cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
+        cv2.imshow("both", cm.rainbow(
+            np.concatenate(
+                (norm(worldmap), 
+                norm(obj.bvpMap)), axis=1)))
         cv2.waitKey(1)
-    cv2.destroyWindow('worldmap')
-    cv2.destroyWindow('bvpmap')
-    cv2.destroyWindow('localmap')
+    # cv2.destroyWindow('worldmap')
+    # cv2.destroyWindow('bvpmap')
+    cv2.destroyWindow('both')
+    # cv2.destroyWindow('localmap')
 
 def calcBVPThread(obj):
+    walls = None
     while(not rospy.is_shutdown()):
-        bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap)
-        # walls = None
+        bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap, walls=walls)
         # for i in range(4):
         #     route = harmonicpotentialfield.mkRoute(bvp, (obj.pos.x, obj.pos.y))
         #     if len(route)>1:
@@ -64,24 +69,26 @@ def calcBVPThread(obj):
         #             break
         #     bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap,steps=400,walls=walls)
         obj.bvpMap = bvp
+        walls = bvp
 
 def calcPathPlanThread(obj):
     time.sleep(1) # wait initial spin
     while(not rospy.is_shutdown()):
-        # do not recalculate if there is a plan in action
-        if len(obj.route)>0: 
-            time.sleep(5)
-            obj.route = obj.route[1:] # fade path
-            continue
-        print "making route"
+        # # do not recalculate if there is a plan in action
+        # if len(obj.route)>0: 
+        #     time.sleep(0.1)
+        #     obj.route = obj.route[1:] # fade path
+        #     continue
+        # print "making route"
         route = []
         if hasattr(obj, "bvpMap"):
-            print "using BVP"
-            route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y))
-        # local minimum?
-        if len(route)<4:
-            print "using A*"
-            route = astar.mkRoute(obj.worldmap, (obj.pos.x, obj.pos.y), (0,0))
+            # print "using BVP"
+            route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y), steps=1, stepSize=5)
+            # print "got %s points"%len(route)
+        # # local minimum?
+        # if len(route)<2:
+        #     print "using A*"
+        #     route = astar.mkRoute(obj.worldmap, (obj.pos.x, obj.pos.y), (0,0))
         obj.route = route
 
 class Trab2():
