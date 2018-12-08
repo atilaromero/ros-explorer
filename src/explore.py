@@ -3,8 +3,11 @@
 import sys
 import rospy
 import numpy as np
-from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Quaternion
 import cv2
 import threading
 import time
@@ -15,6 +18,7 @@ import astar
 import harmonicpotentialfield
 import laserscan
 import maps
+import tf
 
 def normRad(rad):
     return (rad + np.pi) % (2*np.pi) - np.pi
@@ -37,25 +41,28 @@ def updateWorldMapThread(obj):
         #     obj.pos.rot += (rot-rot0)/2
         obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot)
         obj.localmap = localmap
-
-def showImagesThread(obj):
-    norm = Normalize(vmin=-2, vmax=1)
-    while(not rospy.is_shutdown()):
-        worldmap = obj.worldmap.copy()
-        for x,y in obj.route:
-            worldmap[x-4:x+4,y-4:y+4] = -2
-        # cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
-        # cv2.imshow("bvpmap", cm.rainbow(norm(obj.bvpMap)))
-        # cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
-        cv2.imshow("both", cm.rainbow(
-            np.concatenate(
-                (norm(worldmap), 
-                norm(obj.bvpMap)), axis=1)))
-        cv2.waitKey(1)
-    # cv2.destroyWindow('worldmap')
-    # cv2.destroyWindow('bvpmap')
-    cv2.destroyWindow('both')
-    # cv2.destroyWindow('localmap')
+        msg = OccupancyGrid()
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = "mymap"
+        msg.info.resolution = 0.04
+        msg.info.width = obj.worldmap.shape[0]
+        msg.info.height = obj.worldmap.shape[1]
+        msg.info.origin.orientation = Quaternion(0,0,0,1)
+        msg.info.origin.position.x = -8
+        msg.info.origin.position.y = -8
+        msg.data = 100/(1+np.exp(-obj.worldmap))
+        msg.data[obj.worldmap == 0]=-1
+        msg.data = msg.data.T.astype(np.int8).ravel()
+        try:
+            obj.cmd_map.publish(msg)
+        except Exception as e:
+            print('error', e)
+        br = tf.TransformBroadcaster()
+        br.sendTransform((0, 0, 0),
+                         tf.transformations.quaternion_from_euler(0, 0, 0),
+                         rospy.Time.now(),
+                         "mymap",
+                         "map")
 
 def calcBVPThread(obj):
     walls = None
@@ -106,11 +113,12 @@ class Trab2():
         rospy.on_shutdown(self.shutdown)
         self.scan_sub = rospy.Subscriber('/scan', LaserScan, self.getScan)
         self.cmd_vel = rospy.Publisher('/cmd_vel_mux/input/navi', Twist, queue_size=10)
+        self.cmd_map = rospy.Publisher('mymap', OccupancyGrid, queue_size=1)
 
         threading.Thread(target=lambda:updateWorldMapThread(self)).start()
         threading.Thread(target=lambda:calcPathPlanThread(self)).start()
         threading.Thread(target=lambda:calcBVPThread(self)).start()
-        threading.Thread(target=lambda:showImagesThread(self)).start()
+        # threading.Thread(target=lambda:showImagesThread(self)).start()
 
         # TurtleBot will stop if we don't keep telling it to move.
         # How often should we tell it to move? 10 HZ

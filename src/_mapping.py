@@ -22,7 +22,7 @@ class WorldMap():
         rospy.init_node('Trab2', anonymous=False)
         self.scan_sub = rospy.Subscriber('/scan', LaserScan, self.getScan)
         self.scan_odom = rospy.Subscriber('/odom', Odometry, self.getOdom)
-        self.cmd_map = rospy.Publisher('/map', OccupancyGrid, queue_size=1)
+        self.cmd_map = rospy.Publisher('/mymap', OccupancyGrid, queue_size=1)
         self.updateMap()
 
     def getScan(self, msg):

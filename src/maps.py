@@ -6,7 +6,7 @@ def joinMaps(worldmap, localmap, x, y, rot):
     M = cv2.getRotationMatrix2D((cols/2,rows/2),rot*180/np.pi,1)
     res = np.zeros((max([worldmap.shape[0],rows/2+x]),max(worldmap.shape[1],cols/2+y)))
     res[:worldmap.shape[0],:worldmap.shape[1]] = worldmap.copy()
-    res[x-rows/2:,y-cols/2:][:rows,:cols] += cv2.warpAffine(localmap,M,(rows,cols))
+    res[int(x-rows/2):,int(y-cols/2):][:rows,:cols] += cv2.warpAffine(localmap,M,(rows,cols))
     res = np.sin(res*1.1)/np.sin(1.2)/1.1
     if np.max(np.abs(res.flat))>1:
         print "error in joinMaps: ", np.max(np.abs(res.flat))
