@@ -44,6 +44,24 @@ def publishMap(worldmap, topicName, publisher):
                         rospy.Time.now(),
                         topicName,
                         "map")
+def showImagesThread(obj):
+    norm = Normalize(vmin=-2, vmax=1)
+    while(not rospy.is_shutdown()):
+        worldmap = obj.worldmap.copy()
+        for x,y in obj.route:
+            worldmap[x-4:x+4,y-4:y+4] = -2
+        # cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
+        # cv2.imshow("bvpmap", cm.rainbow(norm(obj.bvpMap)))
+        # cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
+        cv2.imshow("both", cm.rainbow(
+            np.concatenate(
+                (norm(worldmap), 
+                norm(obj.bvpMap)), axis=1)))
+        cv2.waitKey(1)
+    # cv2.destroyWindow('worldmap')
+    # cv2.destroyWindow('bvpmap')
+    cv2.destroyWindow('both')
+    # cv2.destroyWindow('localmap')
 
 def updateWorldMapThread(obj):
     while(not rospy.is_shutdown()):
@@ -55,8 +73,7 @@ def updateWorldMapThread(obj):
         localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
         obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
         obj.localmap = localmap
-        obj.bvpMap = obj.worldmap.copy()
-        publishMap(obj.worldmap, "mymap", obj.cmd_map)
+        # publishMap(obj.worldmap, "mymap", obj.cmd_map)
 
 def calcBVPThread(obj):
     walls = None
@@ -67,7 +84,7 @@ def calcBVPThread(obj):
         data = 100/(1+np.exp(-obj.bvpMap.copy()))
         data[obj.bvpMap == 0]=-1
         data = data.T.astype(np.int8).ravel()
-        publishMap(data, "myfield", obj.cmd_field)
+        # publishMap(data, "myfield", obj.cmd_field)
 
 def calcPathPlanThread(obj):
     time.sleep(1) # wait initial spin
@@ -89,19 +106,6 @@ def calcPathPlanThread(obj):
         #     route = astar.mkRoute(obj.worldmap, (obj.pos.x, obj.pos.y), (0,0))
         obj.route = route
 
-def showImagesThread(obj):
-    norm = Normalize(vmin=-2, vmax=1)
-    while(not rospy.is_shutdown()):
-        worldmap = obj.worldmap.copy()
-        for x,y in obj.route:
-            worldmap[int(x-4):int(x+4),int(y-4):int(y+4)] = -2
-        cv2.imshow("both", cm.rainbow(
-            np.concatenate(
-                (norm(worldmap), 
-                norm(obj.bvpMap)), axis=1)))
-        cv2.waitKey(1)
-    cv2.destroyWindow('both')
-
 class Explore():
     def __init__(self):
         self.linearResolution = 0.2
@@ -122,7 +126,7 @@ class Explore():
 
         threading.Thread(target=lambda:updateWorldMapThread(self)).start()
         threading.Thread(target=lambda:calcPathPlanThread(self)).start()
-        # threading.Thread(target=lambda:calcBVPThread(self)).start()
+        threading.Thread(target=lambda:calcBVPThread(self)).start()
         threading.Thread(target=lambda:showImagesThread(self)).start()
 
         # TurtleBot will stop if we don't keep telling it to move.
