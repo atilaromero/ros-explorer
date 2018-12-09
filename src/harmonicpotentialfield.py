@@ -11,7 +11,7 @@ def mkBVPMap(worldmap, steps=100, walls=None):
     if walls is None:
         walls = np.zeros(worldmap.shape)
     for x in range(steps):
-        walls[worldmap>0]=1
+        walls[worldmap>0.3]=1
         walls[worldmap==0]=-1
         walls = cv2.filter2D(walls,-1,kernel)
     return walls
