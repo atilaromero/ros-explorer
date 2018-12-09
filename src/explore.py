@@ -8,6 +8,7 @@ from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Quaternion
+import tf
 import cv2
 import threading
 import time
@@ -19,7 +20,7 @@ import astar
 import harmonicpotentialfield
 import laserscan
 import maps
-import tf
+import traceback
 
 def normRad(rad):
     return (rad + np.pi) % (2*np.pi) - np.pi
@@ -50,61 +51,52 @@ def updateWorldMapThread(obj):
         if not hasattr(obj, "scan"):
             time.sleep(0.1)
             continue
-        msg = obj.scan
-        x, y, rot = obj.pos.x, obj.pos.y, obj.pos.rot
-        localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
-        obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
-        obj.localmap = localmap
-        # publishMap(obj.worldmap, "mymap", obj.cmd_map)
+        try:
+            msg = obj.scan
+            x, y, rot = obj.pos.x, obj.pos.y, obj.pos.rot
+            localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
+            obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
+            obj.localmap = localmap
+            publishMap(obj.worldmap, "mymap", obj.cmd_map)
+        except Exception, e:
+            traceback.print_exc()
 
 def showImagesThread(obj):
     norm = Normalize(vmin=-2, vmax=1)
     while(not rospy.is_shutdown()):
-        worldmap = obj.worldmap.copy()
-        for x,y in obj.route:
-            worldmap[x-4:x+4,y-4:y+4] = -2
-        # cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
-        # cv2.imshow("bvpmap", cm.rainbow(norm(obj.bvpMap)))
-        # cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
-        cv2.imshow("both", cm.rainbow(
-            np.concatenate(
-                (norm(worldmap), 
-                norm(obj.bvpMap)), axis=1)))
-        cv2.waitKey(1)
-    # cv2.destroyWindow('worldmap')
-    # cv2.destroyWindow('bvpmap')
+        try:
+            worldmap = obj.worldmap.copy()
+            for x,y in obj.route:
+                worldmap[x-4:x+4,y-4:y+4] = -2
+            cv2.imshow("both", cm.rainbow(
+                np.concatenate(
+                    (norm(worldmap), 
+                    norm(obj.bvpMap)), axis=1)))
+            cv2.waitKey(1)
+        except Exception, e:
+            traceback.print_exc()
     cv2.destroyWindow('both')
-    # cv2.destroyWindow('localmap')
 
 def calcBVPThread(obj):
     walls = None
     while(not rospy.is_shutdown()):
-        bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap, walls=walls)
-        obj.bvpMap = bvp
-        walls = bvp
-        data = 100/(1+np.exp(-obj.bvpMap.copy()))
-        data[obj.bvpMap == 0]=-1
-        data = data.T.astype(np.int8).ravel()
-        # publishMap(data, "myfield", obj.cmd_field)
+        try:
+            bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap, walls=walls)
+            obj.bvpMap = bvp
+            walls = bvp
+            publishMap(obj.bvpMap, "myfield", obj.cmd_field)
+        except Exception, e:
+            traceback.print_exc()
 
 def calcPathPlanThread(obj):
     time.sleep(1) # wait initial spin
     while(not rospy.is_shutdown()):
-        # # do not recalculate if there is a plan in action
-        # if len(obj.route)>0: 
-        #     time.sleep(0.1)
-        #     obj.route = obj.route[1:] # fade path
-        #     continue
-        # print "making route"
         route = []
         if hasattr(obj, "bvpMap"):
-            # print "using BVP"
-            route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y), steps=1, stepSize=5)
-            # print "got %s points"%len(route)
-        # # local minimum?
-        # if len(route)<2:
-        #     print "using A*"
-        #     route = astar.mkRoute(obj.worldmap, (obj.pos.x, obj.pos.y), (0,0))
+            try:
+                route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y), steps=1, stepSize=5)
+            except Exception, e:
+                traceback.print_exc()
         obj.route = route
 
 class Explore():
