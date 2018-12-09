@@ -1,0 +1,5 @@
+<launch>
+  <group ns="trabf">
+    <node pkg="turtlesim" name="sim" type="turtlesim_node"/>
+  </group>
+</launch>

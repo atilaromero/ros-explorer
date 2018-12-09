@@ -11,6 +11,7 @@ from geometry_msgs.msg import Quaternion
 import cv2
 import threading
 import time
+import matplotlib.image
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
 import datetime
@@ -41,6 +42,7 @@ def updateWorldMapThread(obj):
         #     obj.pos.rot += (rot-rot0)/2
         obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot)
         obj.localmap = localmap
+        #publish worldmap
         msg = OccupancyGrid()
         msg.header.stamp = rospy.Time.now()
         msg.header.frame_id = "mymap"
@@ -77,6 +79,28 @@ def calcBVPThread(obj):
         #     bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap,steps=400,walls=walls)
         obj.bvpMap = bvp
         walls = bvp
+        msg = OccupancyGrid()
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = "myfield"
+        msg.info.resolution = 0.04
+        msg.info.width = obj.bvpMap.shape[0]
+        msg.info.height = obj.bvpMap.shape[1]
+        msg.info.origin.orientation = Quaternion(0,0,0,1)
+        msg.info.origin.position.x = -8
+        msg.info.origin.position.y = -8
+        msg.data = 100/(1+np.exp(-obj.bvpMap))
+        msg.data[obj.bvpMap == 0]=-1
+        msg.data = msg.data.T.astype(np.int8).ravel()
+        try:
+            obj.cmd_map.publish(msg)
+        except Exception as e:
+            print('error', e)
+        br = tf.TransformBroadcaster()
+        br.sendTransform((0, 0, 0),
+                         tf.transformations.quaternion_from_euler(0, 0, 0),
+                         rospy.Time.now(),
+                         "myfield",
+                         "mymap")
 
 def calcPathPlanThread(obj):
     time.sleep(1) # wait initial spin
@@ -98,7 +122,26 @@ def calcPathPlanThread(obj):
         #     route = astar.mkRoute(obj.worldmap, (obj.pos.x, obj.pos.y), (0,0))
         obj.route = route
 
-class Trab2():
+def showImagesThread(obj):
+    norm = Normalize(vmin=-2, vmax=1)
+    while(not rospy.is_shutdown()):
+        worldmap = obj.worldmap.copy()
+        for x,y in obj.route:
+            worldmap[x-4:x+4,y-4:y+4] = -2
+        # cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
+        # cv2.imshow("bvpmap", cm.rainbow(norm(obj.bvpMap)))
+        # cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
+        cv2.imshow("both", cm.rainbow(
+            np.concatenate(
+                (norm(worldmap), 
+                norm(obj.bvpMap)), axis=1)))
+        cv2.waitKey(1)
+    # cv2.destroyWindow('worldmap')
+    # cv2.destroyWindow('bvpmap')
+    cv2.destroyWindow('both')
+    # cv2.destroyWindow('localmap')
+
+class Explore():
     def __init__(self):
         self.linearResolution = 0.2
         self.worldmap = np.ndarray((400,400), float)
@@ -171,8 +214,9 @@ class Trab2():
         return 0
 
     def shutdown(self):
-        filename = datetime.datetime.now().strftime("worldmap-%Y%m%d-%H%M.npy")
-        np.save(filename, self.worldmap)
+        filename = datetime.datetime.now().strftime("worldmap-%Y%m%d-%H%M.png")
+        matplotlib.image.imsave(filename, self.worldmap)
+
         # a default Twist has linear.x of 0 and angular.z of 0.  So it'll stop TurtleBot
         self.cmd_vel.publish(Twist())
         # sleep just makes sure TurtleBot receives the stop command prior to shutting down the script
@@ -180,6 +224,6 @@ class Trab2():
 
 if __name__ == '__main__':
     try:
-        Trab2(*sys.argv[1:])
+        Explore(*sys.argv[1:])
     except rospy.exceptions.ROSInterruptException:
         pass
