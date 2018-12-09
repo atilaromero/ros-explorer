@@ -9,7 +9,7 @@ kernel = np.array([
 
 def mkBVPMap(worldmap, steps=100, walls=None):
     if walls is None:
-        walls = np.ones(worldmap.shape) * 0.95
+        walls = np.zeros(worldmap.shape)
     for x in range(steps):
         walls[worldmap>0]=1
         walls[worldmap==0]=-1

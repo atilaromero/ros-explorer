@@ -24,6 +24,27 @@ import tf
 def normRad(rad):
     return (rad + np.pi) % (2*np.pi) - np.pi
 
+def publishMap(worldmap, topicName, publisher):
+    msg = OccupancyGrid()
+    msg.header.stamp = rospy.Time.now()
+    msg.header.frame_id = topicName
+    msg.info.resolution = 0.04
+    msg.info.width = worldmap.shape[0]
+    msg.info.height = worldmap.shape[1]
+    msg.info.origin.orientation = Quaternion(0,0,0,1)
+    msg.info.origin.position.x = -8
+    msg.info.origin.position.y = -8
+    msg.data = 100/(1+np.exp(-worldmap))
+    msg.data[worldmap == 0]=-1
+    msg.data = msg.data.T.astype(np.int8).ravel()
+    publisher.publish(msg)
+    br = tf.TransformBroadcaster()
+    br.sendTransform((0, 0, 0),
+                        tf.transformations.quaternion_from_euler(0, 0, 0),
+                        rospy.Time.now(),
+                        topicName,
+                        "map")
+
 def updateWorldMapThread(obj):
     while(not rospy.is_shutdown()):
         if not hasattr(obj, "scan"):
@@ -32,75 +53,21 @@ def updateWorldMapThread(obj):
         msg = obj.scan
         x, y, rot = obj.pos.x, obj.pos.y, obj.pos.rot
         localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
-        # x0,y0,rot0 = x,y,rot
-        # initialgrade = maps.trypos(obj.worldmap, localmap, x, y, rot)
-        # # (x, y, rot), grade = maps.localrandom(obj.worldmap, localmap, x, y, rot)
-        # (x, y, rot), grade = maps.localbest(obj.worldmap, localmap, x, y, rot, angle_increment=msg.angle_increment)
-        # if grade/initialgrade > 0.1:
-        #     obj.pos.x += (x-x0)/2  # /2 to smooth correction      
-        #     obj.pos.y += (y-y0)/2       
-        #     obj.pos.rot += (rot-rot0)/2
-        obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot)
+        obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
         obj.localmap = localmap
-        #publish worldmap
-        msg = OccupancyGrid()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = "mymap"
-        msg.info.resolution = 0.04
-        msg.info.width = obj.worldmap.shape[0]
-        msg.info.height = obj.worldmap.shape[1]
-        msg.info.origin.orientation = Quaternion(0,0,0,1)
-        msg.info.origin.position.x = -8
-        msg.info.origin.position.y = -8
-        msg.data = 100/(1+np.exp(-obj.worldmap))
-        msg.data[obj.worldmap == 0]=-1
-        msg.data = msg.data.T.astype(np.int8).ravel()
-        try:
-            obj.cmd_map.publish(msg)
-        except Exception as e:
-            print('error', e)
-        br = tf.TransformBroadcaster()
-        br.sendTransform((0, 0, 0),
-                         tf.transformations.quaternion_from_euler(0, 0, 0),
-                         rospy.Time.now(),
-                         "mymap",
-                         "map")
+        obj.bvpMap = obj.worldmap.copy()
+        publishMap(obj.worldmap, "mymap", obj.cmd_map)
 
 def calcBVPThread(obj):
     walls = None
     while(not rospy.is_shutdown()):
         bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap, walls=walls)
-        # for i in range(4):
-        #     route = harmonicpotentialfield.mkRoute(bvp, (obj.pos.x, obj.pos.y))
-        #     if len(route)>1:
-        #         x,y = route[-1]
-        #         if obj.worldmap[x,y] == 0: # unexplored
-        #             break
-        #     bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap,steps=400,walls=walls)
         obj.bvpMap = bvp
         walls = bvp
-        msg = OccupancyGrid()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = "myfield"
-        msg.info.resolution = 0.04
-        msg.info.width = obj.bvpMap.shape[0]
-        msg.info.height = obj.bvpMap.shape[1]
-        msg.info.origin.orientation = Quaternion(0,0,0,1)
-        msg.info.origin.position.x = -8
-        msg.info.origin.position.y = -8
-        msg.data = 100/(1+np.exp(-obj.bvpMap))
-        msg.data[obj.bvpMap == 0]=-1
-        msg.data = msg.data.T.astype(np.int8).ravel()
-        try:
-            obj.cmd_map.publish(msg)
-        except Exception as e:
-            print('error', e)
-        br = tf.TransformBroadcaster()
-        br.sendTransform((0, 0, 0),
-                         tf.transformations.quaternion_from_euler(0, 0, 0),
-                         rospy.Time.now(),
-                         "myfield",
-                         "mymap")
+        data = 100/(1+np.exp(-obj.bvpMap.copy()))
+        data[obj.bvpMap == 0]=-1
+        data = data.T.astype(np.int8).ravel()
+        publishMap(data, "myfield", obj.cmd_field)
 
 def calcPathPlanThread(obj):
     time.sleep(1) # wait initial spin
@@ -127,19 +94,13 @@ def showImagesThread(obj):
     while(not rospy.is_shutdown()):
         worldmap = obj.worldmap.copy()
         for x,y in obj.route:
-            worldmap[x-4:x+4,y-4:y+4] = -2
-        # cv2.imshow("worldmap", cm.rainbow(norm(worldmap)))
-        # cv2.imshow("bvpmap", cm.rainbow(norm(obj.bvpMap)))
-        # cv2.imshow("localmap", cm.rainbow(norm(obj.localmap)))
+            worldmap[int(x-4):int(x+4),int(y-4):int(y+4)] = -2
         cv2.imshow("both", cm.rainbow(
             np.concatenate(
                 (norm(worldmap), 
                 norm(obj.bvpMap)), axis=1)))
         cv2.waitKey(1)
-    # cv2.destroyWindow('worldmap')
-    # cv2.destroyWindow('bvpmap')
     cv2.destroyWindow('both')
-    # cv2.destroyWindow('localmap')
 
 class Explore():
     def __init__(self):
@@ -157,11 +118,12 @@ class Explore():
         self.scan_sub = rospy.Subscriber('/scan', LaserScan, self.getScan)
         self.cmd_vel = rospy.Publisher('/cmd_vel_mux/input/navi', Twist, queue_size=10)
         self.cmd_map = rospy.Publisher('mymap', OccupancyGrid, queue_size=1)
+        self.cmd_field = rospy.Publisher('myfield', OccupancyGrid, queue_size=1)
 
         threading.Thread(target=lambda:updateWorldMapThread(self)).start()
         threading.Thread(target=lambda:calcPathPlanThread(self)).start()
-        threading.Thread(target=lambda:calcBVPThread(self)).start()
-        # threading.Thread(target=lambda:showImagesThread(self)).start()
+        # threading.Thread(target=lambda:calcBVPThread(self)).start()
+        threading.Thread(target=lambda:showImagesThread(self)).start()
 
         # TurtleBot will stop if we don't keep telling it to move.
         # How often should we tell it to move? 10 HZ

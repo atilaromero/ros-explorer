@@ -21,6 +21,7 @@ RUN apt-get install -y \
       git \
       ros-kinetic-turtlebot-gazebo \
 &&  rm -rf /var/lib/apt/lists/*
+RUN apt-get update
 RUN apt-get install -y \
       ros-kinetic-turtlebot-stage \
 
