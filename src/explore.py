@@ -21,30 +21,31 @@ import harmonicpotentialfield
 import laserscan
 import maps
 import traceback
+import math
 
 def normRad(rad):
     return (rad + np.pi) % (2*np.pi) - np.pi
 
-def publishMap(worldmap, topicName, publisher):
+def publishMap(worldmap, topicName, publisher, x,y, rot):
     msg = OccupancyGrid()
     msg.header.stamp = rospy.Time.now()
     msg.header.frame_id = topicName
-    msg.info.resolution = 0.04
+    msg.info.resolution = 0.05
     msg.info.width = worldmap.shape[0]
     msg.info.height = worldmap.shape[1]
     msg.info.origin.orientation = Quaternion(0,0,0,1)
-    msg.info.origin.position.x = -8
-    msg.info.origin.position.y = -8
+    msg.info.origin.position.x = -x*msg.info.resolution
+    msg.info.origin.position.y = -y*msg.info.resolution
     msg.data = 100/(1+np.exp(-worldmap))
     msg.data[worldmap == 0]=-1
     msg.data = msg.data.T.astype(np.int8).ravel()
     publisher.publish(msg)
     br = tf.TransformBroadcaster()
-    br.sendTransform((0, 0, 0),
-                        tf.transformations.quaternion_from_euler(0, 0, 0),
-                        rospy.Time.now(),
-                        topicName,
-                        "map")
+    br.sendTransform((0,0,0),
+                    tf.transformations.quaternion_from_euler(0, 0, -rot-np.pi/2),
+                    rospy.Time.now(),
+                    topicName,
+                    "base_link")
 
 def updateWorldMapThread(obj):
     while(not rospy.is_shutdown()):
@@ -57,7 +58,7 @@ def updateWorldMapThread(obj):
             localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
             obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
             obj.localmap = localmap
-            publishMap(obj.worldmap, "mymap", obj.cmd_map)
+            publishMap(obj.worldmap, "mymap", obj.cmd_map, obj.pos.x, obj.pos.y, obj.pos.rot)
         except Exception, e:
             traceback.print_exc()
 
@@ -84,7 +85,7 @@ def calcBVPThread(obj):
             bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap, walls=walls)
             obj.bvpMap = bvp
             walls = bvp
-            publishMap(obj.bvpMap, "myfield", obj.cmd_field)
+            publishMap(obj.bvpMap, "myfield", obj.cmd_field, obj.pos.x, obj.pos.y, obj.pos.rot)
         except Exception, e:
             traceback.print_exc()
 
