@@ -44,6 +44,19 @@ def publishMap(worldmap, topicName, publisher):
                         rospy.Time.now(),
                         topicName,
                         "map")
+
+def updateWorldMapThread(obj):
+    while(not rospy.is_shutdown()):
+        if not hasattr(obj, "scan"):
+            time.sleep(0.1)
+            continue
+        msg = obj.scan
+        x, y, rot = obj.pos.x, obj.pos.y, obj.pos.rot
+        localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
+        obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
+        obj.localmap = localmap
+        # publishMap(obj.worldmap, "mymap", obj.cmd_map)
+
 def showImagesThread(obj):
     norm = Normalize(vmin=-2, vmax=1)
     while(not rospy.is_shutdown()):
@@ -62,18 +75,6 @@ def showImagesThread(obj):
     # cv2.destroyWindow('bvpmap')
     cv2.destroyWindow('both')
     # cv2.destroyWindow('localmap')
-
-def updateWorldMapThread(obj):
-    while(not rospy.is_shutdown()):
-        if not hasattr(obj, "scan"):
-            time.sleep(0.1)
-            continue
-        msg = obj.scan
-        x, y, rot = obj.pos.x, obj.pos.y, obj.pos.rot
-        localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
-        obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
-        obj.localmap = localmap
-        # publishMap(obj.worldmap, "mymap", obj.cmd_map)
 
 def calcBVPThread(obj):
     walls = None
