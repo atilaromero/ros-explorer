@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import math
 
 kernel = np.array([
             [0,1,0],
@@ -9,11 +10,12 @@ kernel = np.array([
 
 def mkBVPMap(worldmap, steps=100, walls=None):
     if walls is None:
-        walls = np.zeros(worldmap.shape)
+        walls = np.ones(worldmap.shape) * 0.9
     for x in range(steps):
         walls[worldmap>0.3]=1
         walls[worldmap==0]=-1
-        walls = cv2.filter2D(walls,-1,kernel)
+        walls = cv2.filter2D(walls,-1,kernel) 
+        #cv2.filter2D: ddepth=-1 -> same depth as the source
     return walls
 
 def mkRoute(planMap, start, steps=20, stepSize=5):
