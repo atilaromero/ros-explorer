@@ -38,7 +38,7 @@ def updateWorldMapThread(obj):
 
 def showImagesThread(obj):
     norm = Normalize(vmin=-2, vmax=1)
-    pix = 0
+    pix = 1
     while(not rospy.is_shutdown()):
         try:
             worldmap = obj.worldmap.copy()
@@ -69,7 +69,7 @@ def calcPathPlanThread(obj):
         route = []
         if hasattr(obj, "bvpMap"):
             try:
-                route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y), steps=50, stepSize=5)
+                route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y), steps=50, stepSize=1)
             except Exception, e:
                 traceback.print_exc()
         obj.route = route
@@ -129,6 +129,7 @@ class Explore():
         dx, dy = rx-self.pos.x, ry-self.pos.y
         if np.abs(dx)+np.abs(dy)<8: # reached point
             self.route = self.route[1:]
+            return self.calcSpin()
         rot = np.arctan2(-dx,dy) # cv2 weird axis
         rot = (rot+np.pi)%(2*np.pi)-np.pi
         spin = rot-self.pos.rot
@@ -146,7 +147,7 @@ class Explore():
             return 0
         # wait for goal to be ahead
         if abs(spin) < 0.1:
-            return (1 - abs(spin))*0.5
+            return (1 - abs(spin))*0.8
         return 0
 
     def shutdown(self):
