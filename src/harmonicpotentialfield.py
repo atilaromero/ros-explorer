@@ -14,7 +14,7 @@ def mkBVPMap(worldmap, steps=100, walls=None):
     for x in range(steps):
         walls[worldmap>0.3]=1
         walls[worldmap==0]=-1
-        walls = cv2.filter2D(walls,-1,kernel) 
+        walls = cv2.filter2D(walls,-1,kernel)
         #cv2.filter2D: ddepth=-1 -> same depth as the source
     return walls
 
