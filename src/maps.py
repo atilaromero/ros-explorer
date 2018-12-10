@@ -1,5 +1,30 @@
 import numpy as np
 import cv2
+import rospy
+from geometry_msgs.msg import Quaternion
+from nav_msgs.msg import OccupancyGrid
+import tf
+
+def publishMap(worldmap, topicName, publisher, x,y, rot):
+    msg = OccupancyGrid()
+    msg.header.stamp = rospy.Time.now()
+    msg.header.frame_id = topicName
+    msg.info.resolution = 0.05
+    msg.info.width = worldmap.shape[0]
+    msg.info.height = worldmap.shape[1]
+    msg.info.origin.orientation = Quaternion(0,0,0,1)
+    msg.info.origin.position.x = -x*msg.info.resolution
+    msg.info.origin.position.y = -y*msg.info.resolution
+    msg.data = 100/(1+np.exp(-worldmap))
+    msg.data[worldmap == 0]=-1
+    msg.data = msg.data.T.astype(np.int8).ravel()
+    publisher.publish(msg)
+    br = tf.TransformBroadcaster()
+    br.sendTransform((0,0,0),
+                    tf.transformations.quaternion_from_euler(0, 0, -rot-np.pi/2),
+                    rospy.Time.now(),
+                    topicName,
+                    "base_link")
 
 def joinMaps(worldmap, localmap, x, y, rot):
     rows,cols = localmap.shape
@@ -11,60 +36,3 @@ def joinMaps(worldmap, localmap, x, y, rot):
     if np.max(np.abs(res.flat))>1:
         print "error in joinMaps: ", np.max(np.abs(res.flat))
     return res
-
-def trypos(worldmap, localmap, x, y, rot):
-    rows,cols = localmap.shape
-    M = cv2.getRotationMatrix2D((rows/2,cols/2),rot*180/np.pi,1)
-    map4 = worldmap.copy()
-    map4 = map4[x-rows/2:,y-cols/2:][:rows,:cols]
-    map4[map4<0]=0 # mapa apenas com obstaculos
-    map4*=cv2.warpAffine(localmap,M,(cols,rows))
-    return sum(map4.flat)
-
-def scorePos(worldmap, laserscan, x, y, rot):
-    
-    ht,wt = localmap.shape
-    M = cv2.getRotationMatrix2D((ht/2,wt/2),rot*180/np.pi,1)
-    map4 = worldmap.copy()
-    map4 = map4[x-rows/2:,y-cols/2:][:rows,:cols]
-    map4[map4<0]=0 # mapa apenas com obstaculos
-    map4*=cv2.warpAffine(localmap,M,(cols,rows))
-    return sum(map4.flat)
-
-def localrandom(worldmap, laserscan, x, y, rot, smallmax=5, bigmax=15):
-    best = (x, y, rot)
-    bestresult = trypos(worldmap, laserscan, *best)
-    small = 0
-    big = 0
-    while(big<bigmax and small<smallmax):
-        small += 1
-        big += 1
-        x = np.random.normal()
-        y = np.random.normal()
-        alpha = np.random.normal()/150
-        sample = (int(x+best[0]), int(y+best[1]), alpha + best[2])
-        sampleresult = trypos(worldmap, laserscan, *sample)
-        if sampleresult > bestresult:
-            small = 0
-            best = sample
-            bestresult = sampleresult
-    return best, bestresult
-
-def localbest(worldmap, laserscan, x, y, rot, maxattempts=10, curresult=None, angle_increment=0.00163668883033):
-    if curresult is None:
-        curresult = trypos(worldmap, laserscan, x, y, rot)
-    if maxattempts > 0:
-        for dx,dy,drot in [( 1, 0,0),
-                           (-1, 0,0),
-                           ( 0, 1,0),
-                           ( 0,-1,0),
-                           ( 0, 0, angle_increment),
-                           ( 0, 0,-angle_increment)
-                          ]:
-            maxattempts -= 1
-            sample = (x+dx, y+dy, rot+drot)
-            sampleresult = trypos(worldmap, laserscan, *sample)
-            if sampleresult > curresult:
-                return localbest(worldmap, laserscan, *sample, maxattempts=maxattempts, curresult=sampleresult)
-    return (x,y,rot), curresult
-
