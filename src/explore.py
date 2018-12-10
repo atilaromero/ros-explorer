@@ -4,48 +4,22 @@ import sys
 import rospy
 import numpy as np
 from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import OccupancyGrid
-from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
-from geometry_msgs.msg import Quaternion
-import tf
+from nav_msgs.msg import OccupancyGrid
 import cv2
 import threading
 import time
 import matplotlib.image
 from matplotlib.colors import Normalize
-import matplotlib.cm as cm
+import matplotlib.cm
 import datetime
-import astar
 import harmonicpotentialfield
 import laserscan
 import maps
 import traceback
-import math
 
 def normRad(rad):
     return (rad + np.pi) % (2*np.pi) - np.pi
-
-def publishMap(worldmap, topicName, publisher, x,y, rot):
-    msg = OccupancyGrid()
-    msg.header.stamp = rospy.Time.now()
-    msg.header.frame_id = topicName
-    msg.info.resolution = 0.05
-    msg.info.width = worldmap.shape[0]
-    msg.info.height = worldmap.shape[1]
-    msg.info.origin.orientation = Quaternion(0,0,0,1)
-    msg.info.origin.position.x = -x*msg.info.resolution
-    msg.info.origin.position.y = -y*msg.info.resolution
-    msg.data = 100/(1+np.exp(-worldmap))
-    msg.data[worldmap == 0]=-1
-    msg.data = msg.data.T.astype(np.int8).ravel()
-    publisher.publish(msg)
-    br = tf.TransformBroadcaster()
-    br.sendTransform((0,0,0),
-                    tf.transformations.quaternion_from_euler(0, 0, -rot-np.pi/2),
-                    rospy.Time.now(),
-                    topicName,
-                    "base_link")
 
 def updateWorldMapThread(obj):
     while(not rospy.is_shutdown()):
@@ -58,18 +32,19 @@ def updateWorldMapThread(obj):
             localmap = laserscan.ranges2cart(msg.ranges, msg.range_min, msg.range_max, msg.angle_min, msg.angle_increment)
             obj.worldmap = maps.joinMaps(obj.worldmap, localmap, x, y, rot).copy()
             obj.localmap = localmap
-            publishMap(obj.worldmap, "mymap", obj.cmd_map, obj.pos.x, obj.pos.y, obj.pos.rot)
+            maps.publishMap(obj.worldmap, "mymap", obj.cmd_map, obj.pos.x, obj.pos.y, obj.pos.rot)
         except Exception, e:
             traceback.print_exc()
 
 def showImagesThread(obj):
     norm = Normalize(vmin=-2, vmax=1)
+    pix = 0
     while(not rospy.is_shutdown()):
         try:
             worldmap = obj.worldmap.copy()
             for x,y in obj.route:
-                worldmap[x-4:x+4,y-4:y+4] = -2
-            cv2.imshow("both", cm.rainbow(
+                worldmap[x-pix:x+pix,y-pix:y+pix] = -2
+            cv2.imshow("both", matplotlib.cm.rainbow(
                 np.concatenate(
                     (norm(worldmap), 
                     norm(obj.bvpMap)), axis=1)))
@@ -82,10 +57,9 @@ def calcBVPThread(obj):
     walls = None
     while(not rospy.is_shutdown()):
         try:
-            bvp = harmonicpotentialfield.mkBVPMap(obj.worldmap, walls=walls)
-            obj.bvpMap = bvp
-            walls = bvp
-            publishMap(obj.bvpMap, "myfield", obj.cmd_field, obj.pos.x, obj.pos.y, obj.pos.rot)
+            walls = harmonicpotentialfield.mkBVPMap(obj.worldmap.copy(), walls=walls)
+            obj.bvpMap = walls
+            maps.publishMap(obj.bvpMap, "myfield", obj.cmd_field, obj.pos.x, obj.pos.y, obj.pos.rot)
         except Exception, e:
             traceback.print_exc()
 
@@ -95,18 +69,20 @@ def calcPathPlanThread(obj):
         route = []
         if hasattr(obj, "bvpMap"):
             try:
-                route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y), steps=1, stepSize=5)
+                route = harmonicpotentialfield.mkRoute(obj.bvpMap, (obj.pos.x, obj.pos.y), steps=50, stepSize=5)
             except Exception, e:
                 traceback.print_exc()
         obj.route = route
 
 class Explore():
-    def __init__(self):
+    def __init__(self, worldmap = None):
+        if worldmap is None:
+            worldmap = np.zeros((400,400))
         self.linearResolution = 0.2
-        self.worldmap = np.ndarray((400,400), float)
-        self.bvpMap = np.ndarray((400,400), float)
+        self.worldmap = worldmap
+        self.bvpMap = np.zeros(worldmap.shape)
         self.route = []
-        self.localmap = np.ndarray((10,10),float)
+        self.localmap = np.zeros((10,10))
         self.pos = lambda:None
         self.pos.x = self.worldmap.shape[0]/2
         self.pos.y = self.worldmap.shape[1]/2
