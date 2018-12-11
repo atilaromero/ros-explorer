@@ -24,5 +24,6 @@ RUN apt-get update \
       vim \
       ros-kinetic-turtlebot-gazebo \
       ros-kinetic-turtlebot-stage \
+      python-scipy \
 &&  apt-get upgrade -y \
 &&  rm -rf /var/lib/apt/lists/*

@@ -2,17 +2,19 @@ import numpy as np
 import cv2
 
 def score(guessPos, guessRot, worldmap, wmscale, wmorigin, scan):
-    phi, r = np.hsplit(scan, 2)
+    matrx = rangeMatrix(np.array(scan.ranges), scan.angle_min, scan.angle_max)
+    phi, r = np.hsplit(matrx, 2)
     x = (np.cos(phi+guessRot) * r) + guessPos[0]
     y = (np.sin(phi+guessRot) * r) + guessPos[1]
     h = np.rint(-y * wmscale  + wmorigin[0])
     w = np.rint(x * wmscale + wmorigin[1])
 
     score = 0
-    for i in range(scan.shape[0]):
-        if not np.isnan(r[i]):
-            score += worldmap[int(h[i]), int(w[i])]
-    score /= scan.shape[0]
+    for i in range(r.shape[0]):
+        if not np.isnan(r[i,0]):
+            if h[i,0]>=0 and w[i,0] >=0 and h[i,0]<worldmap.shape[0] and w[i,0]<worldmap.shape[1]:
+                score += worldmap[int(h[i,0]), int(w[i,0])]
+    score /= r.shape[0]
     score = 1/(1+np.exp(-score)) # logistic function: output value between 0 and 1
     return score
 

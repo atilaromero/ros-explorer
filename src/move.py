@@ -10,12 +10,12 @@ import tf
 def normRad(rad):
     return (rad + np.pi) % (2*np.pi) - np.pi
 
-class Trab1():
+class Move():
     def __init__(self, goalX, goalY):
         self.goalX = float(goalX)
         self.goalY = float(goalY)
         self.linearResolution = 0.2
-        rospy.init_node('Trab1', anonymous=False)
+        rospy.init_node('Move', anonymous=False)
         rospy.on_shutdown(self.shutdown)
         def getPose(msg):
             if not hasattr(self, 'pose'):
@@ -69,6 +69,6 @@ class Trab1():
 
 if __name__ == '__main__':
     try:
-        Trab1(*sys.argv[1:])
+        Move(*sys.argv[1:])
     except rospy.exceptions.ROSInterruptException:
         pass

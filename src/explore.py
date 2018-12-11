@@ -87,9 +87,9 @@ class Explore():
         self.pos.x = self.worldmap.shape[0]/2
         self.pos.y = self.worldmap.shape[1]/2
         self.pos.rot = 0
-        rospy.init_node('Trab2', anonymous=False)
+        rospy.init_node('Explore', anonymous=False)
         rospy.on_shutdown(self.shutdown)
-        self.scan_sub = rospy.Subscriber('/scan', LaserScan, self.getScan)
+        rospy.Subscriber('/scan', LaserScan, self.getScan)
         self.cmd_vel = rospy.Publisher('/cmd_vel_mux/input/navi', Twist, queue_size=10)
         self.cmd_map = rospy.Publisher('mymap', OccupancyGrid, queue_size=1)
         self.cmd_field = rospy.Publisher('myfield', OccupancyGrid, queue_size=1)

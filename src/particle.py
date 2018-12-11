@@ -30,7 +30,6 @@ def estimate(particles, weights=None):
 def updateWeights(scorefunc, particles, mean=None, std=None):
     if mean is None or std is None:
         mean, std = estimate(particles)
-    print(particles.shape, mean, std)
     zscore = (particles - mean)/std
     prior = np.prod(scipy.stats.norm.pdf(zscore), axis=1)
     likehood = scorefunc(particles)
@@ -39,7 +38,7 @@ def updateWeights(scorefunc, particles, mean=None, std=None):
     return weights
 
 def simple_resample(particles, weights):
-    N = len(weights)
+    N = weights.shape[0]
     cumulative_sum = np.cumsum(weights)
     indexes = np.searchsorted(cumulative_sum, np.random.random(N) * cumulative_sum[-1])
     # resample according to indexes
