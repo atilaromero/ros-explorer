@@ -151,8 +151,9 @@ class Explore():
         return 0
 
     def shutdown(self):
+        self.worldmap[self.worldmap<0]=0
         filename = datetime.datetime.now().strftime("worldmap-%Y%m%d-%H%M.png")
-        matplotlib.image.imsave(filename, self.worldmap)
+        matplotlib.image.imsave(filename, self.worldmap,cmap='gray_r')
 
         # a default Twist has linear.x of 0 and angular.z of 0.  So it'll stop TurtleBot
         self.cmd_vel.publish(Twist())
