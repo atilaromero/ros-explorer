@@ -36,7 +36,7 @@ Or, without the function:
               -v /etc/localtime:/etc/localtime:ro        `# share timezone` \
               atilaromero/kinetic
 
-Depending on acceleration card, it may be necessary to install inside the container the same version of graphic drivers running on the host.
+Depending on acceleration card, it may be necessary to install inside the container the same version of graphic drivers running on the host and to add the options "--device /dev/dri" and "--privileged" to the "docker run" call.
 
 This docker image is a generic environment and does not contains the ros-explorer module, which can be installed following the next section.
 
