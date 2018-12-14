@@ -22,9 +22,9 @@
 \maketitle
 
 \begin{abstract}
-    % cadeira
-    % objetivos
-    % repositório
+    This paper describes a work done during the 2018 class Robótica Móvel Inteligente (Intelligent Mobile Robotics) under supervision of Prof. Alexandre de Morais Amory, Prof. Renan G. Maidana, Prof. Roger Leitzke Granada and Prof. Vitor A. M. Jorge.
+    
+    In this class, a ROS module was developed to automate robot exploration, where a map is build using laser readings and movements commands.
 \end{abstract}
 
 {
@@ -34,10 +34,6 @@
 }
 
 \section{Introduction}
-    This paper describes a work done during the 2018 class Robótica Móvel Inteligente (Intelligent Mobile Robotics) under supervision of Prof. Alexandre de Morais Amory, Prof. Renan G. Maidana, Prof. Roger Leitzke Granada and Prof. Vitor A. M. Jorge.
-    
-    In this class, a ROS module was developed to automate robot exploration, where a map is build using laser readings and movements commands.
-
     The developed project address two problems faced during the class beginning: installation of ROS and creation of a map. Installation of ROS may not be straightfoward if the user does not use the recommended Ubuntu version. And creation of a map in ROS by manually moving the robot inside a Gazebo simulation can be tedious. For the first problem, a properly configured docker container, as the one provided in the project repository, can be an easy solution. For the second problem, the ros-explorer module can be used, as it automates the exploration and map creation process.
 
     The project source code is available at http://github.com/atilaromero/ros-explorer
@@ -107,30 +103,54 @@
         \frac{sin(\alpha x)}{\alpha x} = \frac{sin(\alpha\beta)}{\alpha\beta}
     \end{math}
 
-    After some experimentation, the values $\alpha = 1.1$ and $\beta = 0.6$ were chosen, giving after simplification:
+    After some experimentation, the values $\alpha = 1.1$ and $\beta = 0.6$ were chosen. In fact, the whole formula was found in an empirical way, by trial and error. Only after it was already working that an explanation was developed. Substituting the given values in the formula, it simplifies to:
     
     \begin{math}
         f(x) = 0.9786 sin(1.1 x)
     \end{math}
 
-    This approach was adopted as a temporary replacement to Hidden Markov Models (HMM), but it was never changed because its results were satisfatory. HMM is less sensitive to changes, requiring more readings to change a value, while the applied solution requires one or two readings. In pratice, this means that the current reading prevails over previous ones. When using in a real scenario HMM may be a better choice, but in a simulation the simplicity and speed of this solution are helpful.
-
+    The applied solution requires one reading to overwrite the worldmap. In pratice, this means that the current reading prevails over previous ones. 
+    
 \section{Harmonic potential fields}
-    % descricao da tecnica
-    % duas abordagens avoid/overwrite
-    % range mapping
-    % criacao da rota
-    % algoritmo
+    In this technique, obstacles and objectives are marked in the map as extreme opposing values. For that reason, a potential field map has to use a different set of values than the ones described in the previous section. Keeping the walls values at +1, the value for unknown areas is set to -1 and the value for free areas is set to 0, which is the opposite of what was done before.
+
+    The harmonic potential fields technique is incremental: at each step, the value of each cell is calculed as the gradient of the current region, using the four nearest neighbours values. But there is an exception, cells that are walls or objectives do not change values. That way they work as sources or sinks. After enough steps, finding a path to an objective can be done by simply following the lowest potential from the current position.
+
+    The first attempt was performed using a for-loop construction. But, being done in python, the performance of the algorithm was not satisfactory. A better approach was tried next, using openCV to apply the following convolutional kernel to the map:
+
+    \begin{tabular}{|l|l|l|}
+        \hline
+        0 & 0.25 & 0 \\
+        \hline
+        0.25 & 0 & 0.25 \\
+        \hline
+        0 & 0.25 & 0 \\
+        \hline
+    \end{tabular}
+
+    For the unchangeable values, instead of avoiding them, they were overwritten at the convolution and overwritten again to restore their original values.
+
+    Despite using more operations, this approach performed better because it uses openCV instead of pure python. Later the -1 value was substituted for -1000, which made the path discovery faster.
 
 \section{Map publish}
-    % mapa em baixo do robo
-    % algoritmo
+    The worldmap constructed by joinning the laser readings together is being published on the topic ``/mymap'', and the potential fields map on the topic ``/myfield''. This allows to visualize the maps on rviz while they are being made. 
+    
+    But the since the only source of inputs of ros-explorer comes from the laser readings, the only common frame of reference between the map being built and the map already known by rviz is the robot itself.
+
+    So, after publishing each of the maps on their topics, ROS must be informed on how they must be placed in relation to some reference, in this case ``base\_link'', the base of the robot.
+
+    This is done by using a coordinate system transform that puts the origin of the map below the robot position, facing forward. Thus, as the robot moves, the published map moves below it in the opposite direction, staying always in the same place in the floor frame of reference.
+    
+    In rviz this showns as a map that is just in the right place.
 
 \section{Results}
-    % mapeamento
-    % localizacao
-    % limitacao do tamanho do mapa
+    The module has succeded at mapping an simulated environment, but it assumes that eventual errors between commanded movement and execution are small. In a real scenario it may be necessary to add a particle filter or other similar technique to correct the robot position.
 
-\bibliographystyle{acm}
-\bibliography{bibliography}
+    An known limitation of the module is the size of the map, always fixed at 400x400 pixels. A dynamic sized map, or at least a configurable one, is the most important improvement pending.
+    
+    The path planning using harmonic potential fiels was successful, but the limited size of the map imposed a problem, as the robot could not perform exploration well when its laser range reached a border.
+
+% \section{Acknowledgements}
+% \bibliographystyle{acm}
+% \bibliography{bibliography}
 \end{document}
