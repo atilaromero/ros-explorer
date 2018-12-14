@@ -14,11 +14,19 @@
 \usepackage[colorlinks=true, allcolors=blue]{hyperref}
 \usepackage{fancyvrb}
 \usepackage{enumitem}
+\usepackage{amsmath}
 
 \title{ROS-Explorer: a ROS module that implements harmonic potential fields based exploration}
-\author{Atila Leites Romero}
+\author{
+    Atila Leites Romero \\
+    Programa de Pós-Graduação em Ciência da Computação \\
+    Pontifícia Universidade Católica do Rio Grande do Sul \\
+    Porto Alegre, Rio Grande do Sul \\
+    Email: atilaromero@gmail.com
+    }
 
 \begin{document}
+\date{}
 \maketitle
 
 \begin{abstract}
@@ -26,7 +34,6 @@
     
     In this class, a ROS module was developed to automate robot exploration, where a map is build using laser readings and movements commands.
 \end{abstract}
-
 {
     \par	
     \textbf{\textit{Keywords $-$}} 
@@ -77,9 +84,9 @@
 
     In order to keep the worldmap accumulated reading values between -1 and +1, an attenuation function is applied on the result:
 
-    \begin{math}
+    \begin{equation}
         f(x) = \frac{sin(\alpha x)}{\alpha} . \frac{\alpha\beta}{sin(\alpha\beta)}
-    \end{math}
+    \end{equation}
 
     This function has the following interesting properties: 
     \begin{itemize}
@@ -89,25 +96,22 @@
         \item when $|x| > \beta$ and $|x|< \pi/\alpha$, then $f(x) < x $: it decreases slight high values
     \end{itemize}
 
-    Those claims come from:
+    Those claims come from the position of the inflection point, which occurs when $f(x) = x$:
 
-    \begin{math}
-        f(x) = x 
-    \end{math}
-
-    \begin{math}
-        \frac{f(x)}{x} = 1
-    \end{math}
-
-    \begin{math}
-        \frac{sin(\alpha x)}{\alpha x} = \frac{sin(\alpha\beta)}{\alpha\beta}
-    \end{math}
+    \begin{align}
+        f(x) &= x \\
+        \frac{f(x)}{x} &= 1 \nonumber\\
+        \frac{\frac{sin(\alpha x)}{\alpha} . \frac{\alpha\beta}{sin(\alpha\beta)}}{x} &= 1 \quad\text{( by equation 1),}  \nonumber\\
+        \frac{sin(\alpha x)}{\alpha x} &= \frac{sin(\alpha\beta)}
+        {\alpha\beta} \nonumber\\
+        x &= \beta
+    \end{align}
 
     After some experimentation, the values $\alpha = 1.1$ and $\beta = 0.6$ were chosen. In fact, the whole formula was found in an empirical way, by trial and error. Only after it was already working that an explanation was developed. Substituting the given values in the formula, it simplifies to:
     
-    \begin{math}
+    \begin{equation}
         f(x) = 0.9786 sin(1.1 x)
-    \end{math}
+    \end{equation}
 
     The applied solution requires one reading to overwrite the worldmap. In pratice, this means that the current reading prevails over previous ones. 
     
