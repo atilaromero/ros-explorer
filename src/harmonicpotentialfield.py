@@ -12,8 +12,8 @@ def mkBVPMap(worldmap, steps=100, walls=None):
     if walls is None:
         walls = np.ones(worldmap.shape) * 0.9
     for x in range(steps):
-        walls[worldmap>0.3]=1
-        walls[worldmap==0]=-1000
+        walls[worldmap>0.3]=1       # walls
+        walls[worldmap==0]=-1000    # unknown area
         walls = cv2.filter2D(walls,-1,kernel)
         #cv2.filter2D: ddepth=-1 -> same depth as the source
     return walls
