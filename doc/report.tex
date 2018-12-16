@@ -15,6 +15,7 @@
 \usepackage{fancyvrb}
 \usepackage{enumitem}
 \usepackage{amsmath}
+\usepackage{url}
 
 \title{ROS-Explorer: a ROS module that implements harmonic potential fields based exploration}
 \author{
@@ -41,22 +42,22 @@
 }
 
 \section{Introduction}
-    The developed project address two problems faced during the class beginning: installation of ROS and creation of a map. Installation of ROS may not be straightfoward if the user does not use the recommended Ubuntu version. And creation of a map in ROS by manually moving the robot inside a Gazebo simulation can be tedious. For the first problem, a properly configured docker container, as the one provided in the project repository, can be an easy solution. For the second problem, the ros-explorer module can be used, as it automates the exploration and map creation process.
+    The developed project address two problems faced during the class beginning: installation of ROS\cite{ROS} and creation of a map. Installation of ROS may not be straightfoward if the user does not use the recommended Ubuntu version. And creation of a map in ROS by manually moving the robot inside a Gazebo\cite{gazebo} simulation can be tedious. For the first problem, a properly configured docker container, as the one provided in the project repository, can be an easy solution. For the second problem, the ros-explorer module can be used, as it automates the exploration and map creation process.
 
     The project source code is available at http://github.com/atilaromero/ros-explorer
 
     This paper is structured as follows: section ``Docker'' describes how using docker with ROS can be beneficial, section ``Laser mapping'' discusses how the laser readings were used to create maps, section ``Harmonic potential fields'' give a brief introduction on the subject and details how the technique was implemented to perform path planning, section ``Map publish'' describes how the generated map is published to ROS, and section ``Results'' discusses achivementes, problems and future work.
 
 \section{Docker}
-    Docker is a technology that creates container based environments. It has some similarities with virtual machines, but without the performance loss. It may be also compared to chroot solutions, but its usage is more robust and simple.
+    Docker\cite{docker} is a technology that creates container based environments. It has some similarities with virtual machines, but without the performance loss. It may be also compared to chroot solutions, but its usage is more robust and simple.
 
     A running docker container creates a process that runs directly in the host's kernel, but it has its own filesystem. 
 
-    Docker allows, for example, to run Ubuntu 16.04 on a Kali distribution, which was the setup used during development of this work. For ROS users this may be very practical, since ROS installation instructions are based on specific Ubuntu versions. Without docker, a ROS user with the wrong linux distribution or version has to choose between compile ROS from source or to reinstall his operating system. With docker, the same user can keep his host operating system intact, use the recommended Ubuntu version inside the ROS container and even have different ROS versions in different containers.
+    Docker allows, for example, to run Ubuntu 16.04 on a Kali distribution, which was the setup used during development of this work. For ROS\cite{ROS} users this may be very practical, since ROS installation instructions are based on specific Ubuntu versions. Without docker, a ROS user with the wrong linux distribution or version has to choose between compile ROS from source or to reinstall his operating system. With docker, the same user can keep his host operating system intact, use the recommended Ubuntu\cite{ubuntu} version inside the ROS container and even have different ROS versions in different containers.
 
     One drawback of using docker is that the container preparation can consume some time, as any operating system install procedure does, but specially regarding graphical cards because it is often necessary to install inside the container the same version used in the host, which is a step that cannot be automated since it is host specific.
 
-    For the kinetic version of ROS, which recommends Ubuntu 16.04, this work is already done, except for the graphical card part, in the Dockerfile provided at the ros-explorer repository (http://github.com/atilaromero/ros-explorer).
+    For the kinetic version of ROS, which recommends Ubuntu 16.04, this work is already done, except for the graphical card part, in the Dockerfile provided at the ros-explorer\cite{ros-explorer} repository (http://github.com/atilaromero/ros-explorer).
 
     The usage instructions are also on the repository, but it essentially consists in downloading a docker image of about 1GB using ``docker pull'' and then using ``docker run''.
 
@@ -155,6 +156,6 @@
     The path planning using harmonic potential fiels was successful, but the limited size of the map imposed a problem, as the robot could not perform exploration well when its laser range reached a border.
 
 % \section{Acknowledgements}
-% \bibliographystyle{acm}
-% \bibliography{bibliography}
+\bibliographystyle{acm}
+\bibliography{bibliography}
 \end{document}
