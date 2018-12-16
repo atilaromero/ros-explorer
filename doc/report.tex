@@ -114,7 +114,9 @@
         f(x) = 0.9786 sin(1.1 x)
     \end{equation}
 
-    The applied solution requires one reading to overwrite the worldmap. In pratice, this means that the current reading prevails over previous ones. 
+    The applied solution requires one reading to overwrite the worldmap, and the choosen parameters are such that $|f(x)| < 1$ is always true, which can be verified by using the largest possible input for x, which is 2 (two consecutive +1 readings): $f(2) = 0.7912$.
+    
+    In pratice, this means that the current reading prevails over previous ones, that the values are always between -1 and +1, and that the update procedure has only two steps: sum the current readings with the worldmap and apply the attenuation function.
     
 \section{Harmonic potential fields}
     In this technique, obstacles and objectives are marked in the map as extreme opposing values. For that reason, a potential field map has to use a different set of values than the ones described in the previous section. Keeping the walls values at +1, the value for unknown areas is set to -1 and the value for free areas is set to 0, which is the opposite of what was done before.
